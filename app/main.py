@@ -13,7 +13,7 @@ from app.utils.validation import (
     user_id_is_required,
     fetchCredentials,
 )
-from app.google.auth import (
+from app.google_utility.auth import (
     get_id_info,
     get_flow,
 )
@@ -22,7 +22,7 @@ from app.mongo.db import (
     db_add_user,
 )
 
-from app.google.calendar import get_calendar_events
+from app.google_utility.calendar import get_calendar_events
 from app.config import Config
 
 app = Flask(__name__)

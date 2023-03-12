@@ -6,3 +6,4 @@ pymongo
 Flask-Limiter
 pytz
 python-dotenv
+google-auth-oauthlib
