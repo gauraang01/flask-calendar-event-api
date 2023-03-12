@@ -1,13 +1,5 @@
-from app.utils.validation import (
-    validate_dates,
-    user_id_is_required,
-    fetchCredentials,
-)
-from pip._vendor import cachecontrol
-from app.google.auth import (
-    get_id_info,
-    get_flow,
-)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask import (
     Flask,
     abort,
@@ -17,7 +9,16 @@ from flask import (
     session,
     render_template,
 )
-from googleapiclient.discovery import build
+from app.utils.validation import (
+    validate_dates,
+    user_id_is_required,
+    fetchCredentials,
+)
+from app.google.auth import (
+    get_id_info,
+    get_flow,
+)
+
 from app.mongo.db import (
     db_add_user,
 )
@@ -27,6 +28,12 @@ from app.config import Config
 
 app = Flask(__name__)
 app.config.from_object(Config)
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
 
 @app.route("/")
 def index():
@@ -65,11 +72,13 @@ def callback():
 
 
 @app.route("/events", methods=["GET"])
+@limiter.limit("5 per minute")
 def get_events():
     return render_template("events.html")
 
 
 @app.route("/events", methods=["POST"])
+@limiter.limit("5 per minute")
 @user_id_is_required
 @validate_dates
 @fetchCredentials

@@ -1,5 +1,5 @@
-import json
 import os
+import json
 import google.oauth2.credentials
 from pymongo import MongoClient
 
@@ -7,6 +7,15 @@ from pymongo import MongoClient
 mongo_client = MongoClient(os.environ.get('MONGO_URI'))
 mongo_db = mongo_client[os.environ.get('MONGO_DB')]
 mongo_collection = mongo_db[os.environ.get('MONGO_COLLECTION')]
+
+
+# Define MongoDB schema
+user_schema = {
+    'user_id': str,
+    'credentials_data': dict,
+    'credentials': str
+}
+
 
 def db_add_user(user_id, credentials):
     credentials_data = {
@@ -30,4 +39,3 @@ def db_get_user_credentials(user_id):
         credentials = None
 
     return credentials
-
