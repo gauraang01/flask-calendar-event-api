@@ -1,8 +1,8 @@
 Flask
-psycopg2
-google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
-pytz
 pymongo
+Flask-Limiter
+pytz
+python-dotenv

@@ -3,7 +3,6 @@ from flask_limiter.util import get_remote_address
 from flask import (
     Flask,
     abort,
-    g,
     redirect,
     request,
     session,
