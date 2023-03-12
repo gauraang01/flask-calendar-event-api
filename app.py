@@ -1,11 +1,17 @@
-import os
-import pathlib
-from datetime import datetime, time
-
-import google.auth.transport.requests
 import pytz
-import requests
+from database import Database
+from datetime import datetime, time
 from config import Config
+from utils import (
+    validate_dates,
+    user_id_is_required,
+    fetchCredentials,
+)
+from pip._vendor import cachecontrol
+from auth import (
+    get_id_info,
+    get_flow,
+)
 from flask import (
     Flask,
     abort,
@@ -13,104 +19,28 @@ from flask import (
     redirect,
     request,
     session,
+    render_template,
 )
-from flask import Flask
-from google.oauth2 import id_token
-from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-import psycopg2.pool
-from pip._vendor import cachecontrol
+from mongo import (
+    db_add_user,
+)
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Database configuration
-# Create a connection pool
-db_pool = psycopg2.pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    host=app.config['DB_HOST'],
-    port=app.config['DB_PORT'],
-    dbname=app.config['DB_NAME'],
-    user=app.config['DB_USER'],
-    password=app.config['DB_PASSWORD']
-)
-
-@app.before_request
-def before_request():
-    # Get a connection from the pool and save it to the global `g` object
-    g.db_conn = db_pool.getconn()
-
-@app.after_request
-def after_request(response):
-    # Return the connection to the pool
-    db_pool.putconn(g.db_conn)
-    return response
 
 
-
-# OAUTH CONFIGURATION FILES
-app.secret_key = app.config['APP_SECRET_KEY'] # make sure this matches with that's in client_secret.json
-
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1" # to allow Http traffic for local dev
-
-GOOGLE_CLIENT_ID = app.config['GOOGLE_CLIENT_ID']
-
-client_secrets_file = os.path.join(pathlib.Path(__file__).parent, "client_secret.json")
-
-flow = Flow.from_client_secrets_file(
-    client_secrets_file=client_secrets_file,
-    scopes=["https://www.googleapis.com/auth/userinfo.profile", "https://www.googleapis.com/auth/userinfo.email", "openid", "https://www.googleapis.com/auth/calendar"],
-    redirect_uri="http://localhost:5000/callback"
-)
-
-
-
-def login_is_required(function):
-    def wrapper(*args, **kwargs):
-        if "google_id" not in session:
-            return abort(401)  # Authorization required
-        else:
-            return function()
-
-    return wrapper
-
-
-def get_calendar_service():
-    credentials = flow.credentials
-    service = build("calendar", "v3", credentials=credentials)
-    print(f"Access token for Calendar API: {credentials.token}")
-    return service
+@app.route("/")
+def index():
+    return render_template('index.html')
 
 
 @app.route("/login")
 def login():
-    authorization_url, state = flow.authorization_url()
+    authorization_url, state = get_flow().authorization_url()
     session["state"] = state
     return redirect(authorization_url)
-
-@app.route("/callback")
-def callback():
-    flow.fetch_token(authorization_response=request.url)
-
-    if not session["state"] == request.args["state"]:
-        abort(500)  # State does not match!
-
-    credentials = flow.credentials
-    request_session = requests.session()
-    cached_session = cachecontrol.CacheControl(request_session)
-    token_request = google.auth.transport.requests.Request(session=cached_session)
-
-    id_info = id_token.verify_oauth2_token(
-        id_token=credentials._id_token,
-        request=token_request,
-        audience=GOOGLE_CLIENT_ID
-    )
-
-    session["google_id"] = id_info.get("sub")
-    session["name"] = id_info.get("name")
-    print(f"Google OAUTH token: {credentials._id_token}")
-    return redirect("/protected_area")
 
 
 @app.route("/logout")
@@ -119,85 +49,77 @@ def logout():
     return redirect("/")
 
 
+@app.route("/callback")
+def callback():
+    get_flow().fetch_token(authorization_response=request.url)
 
-@app.route("/")
-def index():
-    return "Hello World <a href='/login'><button>Login</button></a>"
+    if not session["state"] == request.args["state"]:
+        abort(500)  # State does not match!
+
+    credentials = get_flow().credentials
+    id_info = get_id_info(credentials)
+
+    session["user_id"] = id_info.get("sub")
+    session["name"] = id_info.get("name")
+
+    user_id = id_info.get("sub")
+    db_add_user(user_id, credentials)
+    return redirect("/events")
 
 
-@app.route("/protected_area", methods=["GET", "POST"])
-@login_is_required
-def protected_area():
-    if request.method == "POST":
-        start_date_str = request.form.get("start_date")
-        end_date_str = request.form.get("end_date")
+@app.route("/events", methods=["GET"])
+def get_events():
+    return render_template("events.html")
 
-        try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
 
-            if start_date > end_date:
-                raise ValueError("Start date should be before end date.")
-        except (ValueError, TypeError):
-            return "Invalid date format. Please use YYYY-MM-DD format."
+@app.route("/events", methods=["POST"])
+@user_id_is_required
+@validate_dates
+@fetchCredentials
+def post_events(user_id, dates, credentials):
+    if(dates == None):
+        return "Invalid date format. Please use YYYY-MM-DD format, and ensure that you are passing both dates."
+    else:
+        start_date, end_date = dates
 
-        service = get_calendar_service()
-        start = datetime.combine(start_date, time.min).isoformat() + "Z"  # 'Z' indicates UTC time
-        end = datetime.combine(end_date, time.max).isoformat() + "Z"  # 'Z' indicates UTC time
+    service = build("calendar", "v3", credentials=credentials)
+    start = datetime.combine(start_date, time.min).isoformat() + "Z"  # 'Z' indicates UTC time
+    end = datetime.combine(end_date, time.max).isoformat() + "Z"  # 'Z' indicates UTC time
 
-        events_result = (
-            service.events()
-            .list(
-                calendarId="primary",
-                timeMin=start,
-                timeMax=end,
-                maxResults=10,
-                singleEvents=True,
-                orderBy="startTime",
+    events_result = (
+        service.events()
+        .list(
+            calendarId="primary",
+            timeMin=start,
+            timeMax=end,
+            maxResults=10,
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+    )
+
+    events = events_result.get("items", [])
+    event_list = []
+
+    if not events:
+        event_list.append("No upcoming events found.")
+    else:
+        for event in events:
+            start = event["start"].get("dateTime", event["start"].get("date"))
+            event_time = (
+                datetime.fromisoformat(start)
+                .astimezone(pytz.timezone("Asia/Kolkata"))
+                .strftime("%Y-%m-%d %H:%M:%S")
             )
-            .execute()
-        )
+            event_list.append(f"{event_time} - {event['summary']}")
 
-        events = events_result.get("items", [])
-        event_list = []
+    return (
+        f"Your upcoming events are between "
+        f"{start_date} and {end_date}: <br/> {', '.join(event_list)} <br/> "
+        f"<a href='/logout'><button>Logout</button></a>"
+    )
 
-        if not events:
-            event_list.append("No upcoming events found.")
-        else:
-            for event in events:
-                start = event["start"].get("dateTime", event["start"].get("date"))
-                event_time = (
-                    datetime.fromisoformat(start)
-                    .astimezone(pytz.timezone("Asia/Kolkata"))
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
-                event_list.append(f"{event_time} - {event['summary']}")
-
-        return (
-            f"Hello {session['name']}! <br/> <br/> Your upcoming events are between "
-            f"{start_date} and {end_date}: <br/> {', '.join(event_list)} <br/> "
-            f"<a href='/logout'><button>Logout</button></a>"
-        )
-
-    return """
-        <html>
-            <body>
-                <form method="post">
-                    Start date: <input type="date" name="start_date" required><br>
-                    End date: <input type="date" name="end_date" required><br>
-                    <input type="submit" value="Submit">
-                </form>
-            </body>
-        </html>
-    """
-
-@app.route('/users')
-def get_users():
-    cur = g.db_conn.cursor()
-    cur.execute('SELECT * FROM Users')
-    users = cur.fetchall()
-    cur.close()
-    return str(users)
 
 
 if __name__ == '__main__':

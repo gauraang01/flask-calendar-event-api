@@ -1,2 +1,4 @@
 env
 .env
+ask.py
+__pycache__/
