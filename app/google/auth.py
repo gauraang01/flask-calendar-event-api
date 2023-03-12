@@ -1,5 +1,8 @@
 import pathlib
+import json
+import os
 from google.oauth2.credentials import Credentials
+import google_auth_oauthlib.flow
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
@@ -8,22 +11,24 @@ import requests
 from google.oauth2 import id_token
 from app.config import Config
 
-import os
 
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 GOOGLE_CLIENT_ID = Config.GOOGLE_CLIENT_ID
+CLIENT_SECRET = Config.CLIENT_SECRET
 
-client_secrets_file = os.path.join(pathlib.Path(__file__).parent, "client_secret.json")
+CLIENT_CONFIG = json.loads(CLIENT_SECRET)
 
-flow = Flow.from_client_secrets_file(
-    client_secrets_file=client_secrets_file,
-    scopes=["https://www.googleapis.com/auth/userinfo.profile", 
+SCOPES=["https://www.googleapis.com/auth/userinfo.profile", 
             "https://www.googleapis.com/auth/userinfo.email", 
             "openid", 
-            "https://www.googleapis.com/auth/calendar"],
-    redirect_uri="http://localhost:5000/callback"
-)
+            "https://www.googleapis.com/auth/calendar"]
 
+
+flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        client_config=CLIENT_CONFIG,
+        scopes=SCOPES)
+
+flow.redirect_uri = 'http://localhost:5000/callback'
 
 
 def get_id_info(credentials):
