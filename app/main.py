@@ -1,14 +1,10 @@
-import pytz
-from database import Database
-from datetime import datetime, time
-from config import Config
-from utils import (
+from app.utils.validation import (
     validate_dates,
     user_id_is_required,
     fetchCredentials,
 )
 from pip._vendor import cachecontrol
-from auth import (
+from app.google.auth import (
     get_id_info,
     get_flow,
 )
@@ -22,14 +18,15 @@ from flask import (
     render_template,
 )
 from googleapiclient.discovery import build
-from mongo import (
+from app.mongo.db import (
     db_add_user,
 )
 
+from app.google.calendar import get_calendar_events
+from app.config import Config
+
 app = Flask(__name__)
 app.config.from_object(Config)
-
-
 
 @app.route("/")
 def index():
@@ -82,37 +79,7 @@ def post_events(user_id, dates, credentials):
     else:
         start_date, end_date = dates
 
-    service = build("calendar", "v3", credentials=credentials)
-    start = datetime.combine(start_date, time.min).isoformat() + "Z"  # 'Z' indicates UTC time
-    end = datetime.combine(end_date, time.max).isoformat() + "Z"  # 'Z' indicates UTC time
-
-    events_result = (
-        service.events()
-        .list(
-            calendarId="primary",
-            timeMin=start,
-            timeMax=end,
-            maxResults=10,
-            singleEvents=True,
-            orderBy="startTime",
-        )
-        .execute()
-    )
-
-    events = events_result.get("items", [])
-    event_list = []
-
-    if not events:
-        event_list.append("No upcoming events found.")
-    else:
-        for event in events:
-            start = event["start"].get("dateTime", event["start"].get("date"))
-            event_time = (
-                datetime.fromisoformat(start)
-                .astimezone(pytz.timezone("Asia/Kolkata"))
-                .strftime("%Y-%m-%d %H:%M:%S")
-            )
-            event_list.append(f"{event_time} - {event['summary']}")
+    event_list = get_calendar_events(start_date, end_date, credentials)
 
     return (
         f"Your upcoming events are between "

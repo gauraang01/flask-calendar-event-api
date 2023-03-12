@@ -1,16 +1,18 @@
-import os
 import pathlib
-import google.auth.transport.requests
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.errors import HttpError
+from googleapiclient.discovery import build
+import google.auth.exceptions
 import requests
 from google.oauth2 import id_token
-from google_auth_oauthlib.flow import Flow
+from app.config import Config
 
-
-from config import Config
+import os
 
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-
 GOOGLE_CLIENT_ID = Config.GOOGLE_CLIENT_ID
+
 client_secrets_file = os.path.join(pathlib.Path(__file__).parent, "client_secret.json")
 
 flow = Flow.from_client_secrets_file(
@@ -36,4 +38,3 @@ def get_id_info(credentials):
 
 def get_flow():
     return flow
-

@@ -1,16 +1,13 @@
-from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
 from datetime import datetime
 from flask import (
-    abort,
-    g,
     redirect,
     request,
     session,
     url_for,
     Request,
 )
-from mongo import (
+from app.mongo.db import (
     db_get_user_credentials,
     db_add_user,
 )
