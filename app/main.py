@@ -8,7 +8,7 @@ from flask import (
     session,
     render_template,
 )
-from app.utils.validation import (
+from app.utils.decorators import (
     validate_dates,
     user_id_is_required,
     fetchCredentials,
@@ -41,9 +41,13 @@ def index():
 
 @app.route("/login")
 def login():
-    authorization_url, state = get_flow().authorization_url()
-    session["state"] = state
-    return redirect(authorization_url)
+    try:
+        authorization_url, state = get_flow().authorization_url()
+        session["state"] = state
+        return redirect(authorization_url)
+    except Exception as error:
+        print(f"Error occured: {error}")
+        return redirect("/")
 
 
 @app.route("/logout")
@@ -54,20 +58,24 @@ def logout():
 
 @app.route("/callback")
 def callback():
-    get_flow().fetch_token(authorization_response=request.url)
+    try:
+        get_flow().fetch_token(authorization_response=request.url)
 
-    if not session["state"] == request.args["state"]:
-        abort(500)  # State does not match!
+        if not session["state"] == request.args["state"]:
+            abort(500)  # State does not match!
 
-    credentials = get_flow().credentials
-    id_info = get_id_info(credentials)
+        credentials = get_flow().credentials
+        id_info = get_id_info(credentials)
+        
+        session["user_id"] = id_info.get("sub")
+        session["name"] = id_info.get("name")
 
-    session["user_id"] = id_info.get("sub")
-    session["name"] = id_info.get("name")
-
-    user_id = id_info.get("sub")
-    db_add_user(user_id, credentials)
-    return redirect("/events")
+        user_id = id_info.get("sub")
+        db_add_user(user_id, credentials)
+        return redirect("/events")
+    except Exception as error:
+        print(f"Error occured: {error}")
+        return redirect("/")
 
 
 @app.route("/events", methods=["GET"])
@@ -82,18 +90,19 @@ def get_events():
 @validate_dates
 @fetchCredentials
 def post_events(user_id, dates, credentials):
-    if(dates == None):
-        return "Invalid date format. Please use YYYY-MM-DD format, and ensure that you are passing both dates."
-    else:
-        start_date, end_date = dates
+    start_date, end_date = dates
 
-    event_list = get_calendar_events(start_date, end_date, credentials)
-
-    return (
+    try:
+        event_list = get_calendar_events(start_date, end_date, credentials)
+        return (
         f"Your upcoming events are between "
         f"{start_date} and {end_date}: <br/> {', '.join(event_list)} <br/> "
         f"<a href='/logout'><button>Logout</button></a>"
     )
+    except Exception as error:
+        print(f"Error occured: {error}")
+        return redirect("/")
+    
 
 
 
