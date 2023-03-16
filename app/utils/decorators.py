@@ -27,8 +27,12 @@ def user_id_is_required(function):
 
 def validate_dates(function):
     def wrapper(*args, **kwargs):
-        start_date_str = request.form.get("start_date")
-        end_date_str = request.form.get("end_date")
+        try:
+            start_date_str = request.form.get("start_date")
+            end_date_str = request.form.get("end_date")
+        except:
+            raise Exception("Enter both dates")
+
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
@@ -56,8 +60,6 @@ def fetchCredentials(function):
             
             if not credentials.valid:
                 try:
-                    print("Hrere")
-                    print("rere: ", credentials.refresh_token)
                     credentials = refresh_token(credentials)
                     db_add_user(user_id, credentials)
                 except RefreshError:
