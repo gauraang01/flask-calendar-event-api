@@ -1,15 +1,11 @@
 import json
 import os
 from google.oauth2.credentials import Credentials
-import google_auth_oauthlib.flow
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.errors import HttpError
-from googleapiclient.discovery import build
 import google.auth.exceptions
 import requests
 from google.oauth2 import id_token
 from app.config import Config
-from app.mongo.db import db_add_user
 from datetime import datetime, timedelta
 
 
@@ -25,7 +21,7 @@ SCOPES=["https://www.googleapis.com/auth/userinfo.profile",
             "https://www.googleapis.com/auth/calendar"]
 
 
-flow = google_auth_oauthlib.flow.Flow.from_client_config(
+flow = Flow.from_client_config(
         client_config=CLIENT_CONFIG,
         scopes=SCOPES)
 

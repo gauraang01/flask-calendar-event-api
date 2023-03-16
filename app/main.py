@@ -27,6 +27,7 @@ from app.config import Config
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
 limiter = Limiter(
     get_remote_address,
     app=app,
